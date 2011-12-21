@@ -18,10 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-require 'cora'
 require 'siri_objects'
-require 'rexml/document'
-require 'plex_library'
+require 'plex-ruby'
 
 #######
 # This is a very basic plugin for Plex but I plan on adding to it =)
@@ -32,25 +30,27 @@ require 'plex_library'
 class SiriProxy::Plugin::Plex < SiriProxy::Plugin
   
   def initialize(config)
-    @host = config["plex_host"]
-    @port = config["plex_port"]
-    @tv_index = config["plex_tv_index"]
-    @player = config["plex_player_host"].nil? ? config["plex_host"] : config["plex_player_host"]
-    @plex_library = PlexLibrary.new(@host, @port, @tv_index, @player)
+    host = config["plex_host"]
+    port = config["plex_port"]
+    tv_index = config["plex_tv_index"]
+    player = config["plex_player_host"].nil? ? config["plex_host"] : config["plex_player_host"]
+    server = Plex::Server.new(host, port)
+    @section = server.library.section(tv_index)
+    @client = server.clients.select { |c| c.host == player }.first
   end
 
   listen_for /on deck/i do
-    ondeck_shows = @plex_library.all_ondeck()
-    if(!ondeck_shows.empty?)
+    ondeck_episodes = @section.on_deck
+    if(!ondeck_episodes.empty?)
        say "On Deck shows are:"
-       ondeck_shows.each do |singleshow|
-         say "#{singleshow.gptitle}, #{singleshow.title}"
+       ondeck_episodes.each do |singleshow|
+         puts "#{singleshow.grandparent_title}, #{singleshow.title}"
        end 
        response = ask "Which show would you like to watch?"
-       show = @plex_library.find_ondeck_show(response)
+       show = find_title(@section.ondeck, response)
        if(show != nil)
-         @plex_library.play_media(show.key)
-         say "Playing \"#{show.gptitle}\""
+         @client.play_media(show)
+         say "Playing \"#{show.grandparent_title}\""
        else
          say "Sorry I couldn't find #{response}in the ondeck queue"
        end 
@@ -61,17 +61,17 @@ class SiriProxy::Plugin::Plex < SiriProxy::Plugin
   end 
 
   
-  listen_for /(play|playing) (the)? latest(.+) of(.+)/i do |command, misc, some, show|
+  listen_for /(?:play|playing) (?:the)? latest(?:.+) of(.+)/i do |show|
     play_latest_episode_of(show)
     request_completed
   end
   
-  listen_for /(play|playing)(.+)/i do |command, show_title|
+  listen_for /(?:play|playing)(.+)/i do |show_title|
 
     season_index = 1
-    show = @plex_library.find_show(show_title)
+    show = find_title(@section.all, show_title)
 
-    if(@plex_library.has_many_seasons?(show))
+    if(show.seasons.size > 1)
       season_index = ask_for_season
       episode_index = ask_for_episode
     else
@@ -83,7 +83,7 @@ class SiriProxy::Plugin::Plex < SiriProxy::Plugin
     request_completed      
   end
   
-  listen_for /(play|playing) (.+)\sepisode (.+)/i do |command, first_match, second_match|
+  listen_for /(?:play|playing) (.+)\sepisode (.+)/i do |first_match, second_match|
     
     show_title = first_match
     
@@ -91,7 +91,7 @@ class SiriProxy::Plugin::Plex < SiriProxy::Plugin
       show_title = $1
     end
     
-    show = @plex_library.find_show(show_title)    
+    show = find_title(@section.all, show_title)    
     season_index = match_number(first_match, "season")    
     episode_index = match_number(second_match)
     
@@ -102,7 +102,7 @@ class SiriProxy::Plugin::Plex < SiriProxy::Plugin
       season = match_number(second_match)
     end
     
-    has_many_seasons = @plex_library.has_many_seasons?(show)
+    has_many_seasons = (show.seasons.size > 1)
     
     if(season_index == -1 && has_many_seasons)
       season_index = ask_for_season
@@ -118,6 +118,8 @@ class SiriProxy::Plugin::Plex < SiriProxy::Plugin
     
     request_completed
   end
+
+  private
   
   def ask_for_number(question)   
     episode = nil
@@ -167,10 +169,10 @@ class SiriProxy::Plugin::Plex < SiriProxy::Plugin
   def play_episode(show, episode_index, season_index = 1)
     
     if(show != nil)
-      episode = @plex_library.find_episode(show, season_index, episode_index)
+      episode = show.season(season_index).episode(episode_index)
       
       if(episode)
-        @plex_library.play_media(episode.key)
+        @client.play_media(episode)
         say "Playing \"#{episode.title}\""
       else
         episode_not_found
@@ -193,16 +195,22 @@ class SiriProxy::Plugin::Plex < SiriProxy::Plugin
   end
   
   def play_latest_episode_of(show_title)
-    show = @plex_library.find_show(show_title)
+    show = find_title(@section.all, show_title)
+
+    season = show.season(show.leaf_count)
     
-    episode = @plex_library.latest_episode(show)
+    episode = season.episode(season.leaf_count)
 
     if(episode != nil)
-      @plex_library.play_media(episode.key)
+      @client.play_media(episode)
       say "Playing \"#{episode.title}\""
     else
       episode_not_found
     end
+  end
+
+  def find_title(group, title)
+    group.select { |thing| thing.title =~ /#{title}/i }.first
   end
   
 end
