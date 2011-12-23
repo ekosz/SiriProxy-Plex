@@ -47,7 +47,7 @@ class SiriProxy::Plugin::Plex < SiriProxy::Plugin
          puts "#{singleshow.grandparent_title}, #{singleshow.title}"
        end 
        response = ask "Which show would you like to watch?"
-       show = find_title(@section.ondeck, response)
+       show = find_title(@section.on_deck, response)
        if(show != nil)
          @client.play_media(show)
          say "Playing \"#{show.grandparent_title}\""
