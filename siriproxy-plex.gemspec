@@ -16,5 +16,5 @@ Gem::Specification.new do |s|
   s.test_files    = `git ls-files -- {test,spec,features}/*`.split("\n")
   s.executables   = `git ls-files -- bin/*`.split("\n").map{ |f| File.basename(f) }
   s.require_paths = ["lib"]
-  s.add_runtime_dependency "plex-ruby", ">= 1.3.0"
+  s.add_runtime_dependency "plex-ruby", ">= 1.4.0"
 end

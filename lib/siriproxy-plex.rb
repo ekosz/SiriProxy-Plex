@@ -36,7 +36,7 @@ class SiriProxy::Plugin::Plex < SiriProxy::Plugin
     player = config["plex_player_host"].nil? ? config["plex_host"] : config["plex_player_host"]
     server = Plex::Server.new(host, port)
     @section = server.library.section(tv_index)
-    @client = server.clients.select { |c| c.host == player }.first
+    @client = server.clients.detect { |c| c.host == player }
   end
 
   listen_for /on deck/i do
@@ -197,9 +197,7 @@ class SiriProxy::Plugin::Plex < SiriProxy::Plugin
   def play_latest_episode_of(show_title)
     show = find_title(@section.all, show_title)
 
-    season = show.season(show.leaf_count)
-    
-    episode = season.episode(season.leaf_count)
+    episode = show.last_episode
 
     if(episode != nil)
       @client.play_media(episode)
@@ -210,7 +208,7 @@ class SiriProxy::Plugin::Plex < SiriProxy::Plugin
   end
 
   def find_title(group, title)
-    group.select { |thing| thing.title =~ /#{title}/i }.first
+    group.detect { |thing| thing.title =~ /#{title}/i }
   end
   
 end
